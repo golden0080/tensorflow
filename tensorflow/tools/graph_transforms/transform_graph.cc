@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/transform_graph.h"
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/file_utils.h"
@@ -181,12 +183,26 @@ std::string ExpandPath(const std::string& path_string) {
 #endif
 }
 
+int LoadExtensions(std::vector<string> &extensions) {
+  for (const auto &ext_path : extensions) {
+    TF_Status* status = TF_NewStatus();
+    TF_LoadLibrary(ext_path.c_str(), status);
+
+    if (!TF_GetCode(status) == TF_OK) {
+      LOG(ERROR) << "extension " << ext_path << " loaded with error: " << TF_Message(status) << "\n";
+      return -1;
+    }
+  }
+  return 0;
+}
+
 int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
   string in_graph_string = "";
   string out_graph_string = "";
   string inputs_string = "";
   string outputs_string = "";
   string transforms_string = "";
+  string extensions_string = "";
   bool output_as_text = false;
   std::vector<Flag> flag_list = {
       Flag("in_graph", &in_graph_string, "input graph file name"),
@@ -196,6 +212,8 @@ int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
       Flag("transforms", &transforms_string, "list of transforms"),
       Flag("output_as_text", &output_as_text,
            "whether to write the graph in text protobuf format"),
+      Flag("extensions", &extensions_string,
+           "paths to custom op extension libraries, separated by comma."),
   };
   string usage = Flags::Usage(argv[0], flag_list);
   usage += "\nTransforms are:\n";
@@ -235,6 +253,13 @@ int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
 
   std::vector<string> inputs = str_util::Split(inputs_string, ',');
   std::vector<string> outputs = str_util::Split(outputs_string, ',');
+  std::vector<string> extensions = str_util::Split(extensions_string, ',');
+
+  if (LoadExtensions(extensions) != 0) {
+    LOG(ERROR) << "Failed to load all extensions.\n" << usage;
+    return -1;
+  }
+
   TransformParameters transform_params;
   Status parse_status =
       ParseTransformParameters(transforms_string, &transform_params);
