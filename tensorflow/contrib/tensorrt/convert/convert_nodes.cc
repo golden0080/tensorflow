@@ -496,6 +496,14 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
   bool setDynamicRange(float min, float max) override { return true; }
 
   float getDynamicRange() const override { return 0; }
+
+  bool dynamicRangeIsSet() const { return false; }
+
+  void resetDynamicRange() {}
+
+  float getDynamicRangeMin() const { return 0.; }
+
+  float getDynamicRangeMax() const { return 0.; }
 #endif
 
  private:
